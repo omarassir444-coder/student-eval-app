@@ -1,0 +1,17 @@
+{
+  "name": "My Nitron App",
+  "packageId": "com.example.app",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "orientation": "portrait",
+  "statusBar": true,
+  "permissions": [
+    "INTERNET"
+  ],
+  "network": {
+    "cleartext": false
+  },
+  "webview": {
+    "backButton": "history"
+  }
+}

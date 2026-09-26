@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>تطبيق تقييم الطلاب</title>
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Firebase SDK (الإصدار 9 الموحد - compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    
+    <!-- Tailwind v3 -->
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+        // تفعيل الوضع الليلي عبر class
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        cairo: ['Cairo', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        body { font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; transition: background-color 0.3s, color 0.3s; }
+        button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        .no-select { -webkit-user-select: none; user-select: none; }
+
+        /* أيقونات القمر والشمس */
+        .theme-icon-sun, .theme-icon-moon { transition: opacity 0.3s, transform 0.3s; }
+        .dark .theme-icon-sun { display: none; }
+        html:not(.dark) .theme-icon-moon { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 min-h-screen pb-12">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 dark:bg-indigo-800 text-white p-4 shadow-md sticky top-0 z-40 transition-colors">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-lg font-bold flex items-center gap-2">
+                <i class="fa-solid fa-graduation-cap"></i> تقييم الطلاب
+            </h1>
+            <div class="flex items-center gap-2">
+                <div id="nav-back" class="hidden">
+                    <button onclick="goBack()" class="bg-indigo-700 dark:bg-indigo-900 px-3.5 py-1.5 rounded-lg text-sm font-semibold active:bg-indigo-800 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-right"></i> رجوع
+                    </button>
+                </div>
+                <!-- زر تبديل الوضع الليلي -->
+                <button onclick="toggleTheme()" class="w-10 h-10 rounded-full bg-indigo-700 dark:bg-indigo-900 flex items-center justify-center active:scale-95 transition" title="تبديل الوضع">
+                    <i class="fa-solid fa-sun theme-icon-sun text-yellow-300"></i>
+                    <i class="fa-solid fa-moon theme-icon-moon text-blue-200"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 max-w-md">
+
+        <!-- شاشة الفصول -->
+        <div id="view-classes" class="space-y-4">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-bold text-gray-700 dark:text-gray-200">الفصول الدراسية</h2>
+                <button onclick="openAddClassModal()" class="bg-indigo-600 dark:bg-indigo-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow active:bg-indigo-700 dark:active:bg-indigo-800 transition">
+                    <i class="fa-solid fa-plus"></i> فصل جديد
+                </button>
+            </div>
+            <div id="classes-list" class="space-y-3"></div>
+        </div>
+
+        <!-- شاشة الطلاب -->
+        <div id="view-students" class="hidden space-y-4">
+            <div class="bg-indigo-50 dark:bg-indigo-950 p-4 rounded-2xl flex justify-between items-center border border-indigo-100 dark:border-indigo-900 transition-colors">
+                <div>
+                    <h2 id="current-class-title" class="text-lg font-bold text-indigo-900 dark:text-indigo-100">اسم الفصل</h2>
+                    <p class="text-xs text-indigo-600 dark:text-indigo-300">إدارة وتقييم الطلاب</p>
+                </div>
+                <button onclick="openStudentModal()" class="bg-indigo-600 dark:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-sm font-semibold shadow active:bg-indigo-700 dark:active:bg-indigo-800 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-plus"></i> طالب جديد
+                </button>
+            </div>
+            <div id="students-list" class="space-y-3"></div>
+        </div>
+
+        <!-- شاشة التقييم -->
+        <div id="view-eval" class="hidden space-y-4">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3 transition-colors">
+                <img id="eval-student-img" src="" alt="" class="w-16 h-16 rounded-full object-cover border-2 border-indigo-500">
+                <div>
+                    <h2 id="eval-student-name" class="text-lg font-bold text-gray-800 dark:text-gray-100">اسم الطالب</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">اختر مستوى التقييم لكل نشاط</p>
+                </div>
+            </div>
+
+            <div class="space-y-3" id="eval-criteria-list"></div>
+
+            <div class="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 p-3.5 rounded-2xl text-xs text-amber-800 dark:text-amber-200 space-y-1 transition-colors">
+                <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info"></i> الإرشادات:</p>
+                <p>احفظ التقييم أولاً، ثم اضغط "عرض تقرير PDF" لحفظه أو مشاركته عبر واتساب.</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="saveEvaluation()" class="bg-emerald-600 dark:bg-emerald-700 text-white py-3.5 rounded-xl font-bold shadow-md active:bg-emerald-700 dark:active:bg-emerald-800 transition text-sm flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-check"></i> حفظ التقييم
+                </button>
+                <button onclick="openPDFModal()" class="bg-blue-600 dark:bg-blue-700 text-white py-3.5 rounded-xl font-bold shadow-md active:bg-blue-700 dark:active:bg-blue-800 transition text-sm flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-file-pdf"></i> عرض PDF
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- نافذة PDF -->
+    <div id="pdf-modal" class="fixed inset-0 bg-black/80 dark:bg-black/90 flex flex-col items-center justify-center p-2 z-50" style="display: none;">
+        <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[95vh] transition-colors">
+            
+            <div class="bg-gray-100 dark:bg-gray-700 p-3 rounded-t-2xl flex justify-between items-center border-b dark:border-gray-600 flex-wrap gap-2">
+                <span class="font-bold text-sm text-gray-700 dark:text-gray-200">التقرير الرسمي</span>
+                <div class="flex gap-1.5 flex-wrap">
+                    <button onclick="sharePDFReport()" class="bg-purple-600 text-white px-3 py-2 rounded-xl text-xs font-bold shadow active:bg-purple-700 transition flex items-center gap-1">
+                        <i class="fa-solid fa-share-nodes"></i> مشاركة
+                    </button>
+                    <button onclick="downloadPDFReport()" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-xs font-bold shadow active:bg-blue-700 transition flex items-center gap-1">
+                        <i class="fa-solid fa-download"></i> حفظ PDF
+                    </button>
+                    <button onclick="closePDFModal()" class="bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-xl text-xs font-bold active:bg-gray-400 dark:active:bg-gray-500 transition">
+                        إغلاق
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 overflow-y-auto" style="direction: rtl; font-family: 'Cairo', Arial, sans-serif;">
+                <!-- ✅ مهم: يبقى التقرير بخلفية بيضاء دائمًا حتى في الوضع الليلي -->
+                <div id="pdf-container" style="background: #ffffff; padding: 15px; border-radius: 8px; color: #111827;">
+                    
+                    <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h2 style="margin: 0; color: #4f46e5; font-size: 18px; font-weight: bold;">تقرير تقييم أداء الطالب</h2>
+                            <p style="margin: 3px 0 0 0; color: #6b7280; font-size: 11px;">متابعة الأنشطة الصفية</p>
+                        </div>
+                        <div style="text-align: left;">
+                            <p style="margin: 0; font-size: 11px; color: #374151;" id="pdf-date">التاريخ:</p>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; background: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                        <img id="pdf-student-img" src="" alt="" style="width: 55px; height: 55px; border-radius: 50%; object-fit: cover; border: 2px solid #4f46e5; margin-left: 12px;">
+                        <div>
+                            <h3 style="margin: 0 0 3px 0; font-size: 14px; color: #111827;" id="pdf-student-name">اسم الطالب:</h3>
+                            <p style="margin: 0; font-size: 11px; color: #4b5563;" id="pdf-class-name">الفصل:</p>
+                        </div>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                        <thead>
+                            <tr style="background-color: #4f46e5; color: #ffffff;">
+                                <th style="padding: 8px; text-align: right; border: 1px solid #e5e7eb; font-size: 12px;">مجال التقييم</th>
+                                <th style="padding: 8px; text-align: center; border: 1px solid #e5e7eb; font-size: 12px; width: 120px;">المستوى</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pdf-table-body"></tbody>
+                    </table>
+
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 4px 0; font-size: 12px; color: #1f2937;">ملاحظات تربوية:</h4>
+                        <p style="margin: 0; font-size: 11px; color: #4b5563; line-height: 1.4;">
+                            نفخر بجهود الطالب المتميز ونتطلع دائماً لتعزيز مهاراته الأكاديمية والسلوكية. نرجو من ولي الأمر الكريم الاطلاع على التقرير ودعم الطالب المستمر نحو مزيد من التفوق والنجاح.
+                        </p>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #374151;">
+                        <div style="text-align: center;">
+                            <p style="margin: 0 0 3px 0; font-weight: bold; color: #4f46e5;">معلمة الفصل</p>
+                            <p style="margin: 0; font-size: 13px; font-weight: bold;">روايح</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة الفصل -->
+    <div id="modal-class" class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" style="display: none;">
+        <div class="bg-white dark:bg-gray-800 w-full max-w-xs rounded-2xl p-5 shadow-xl space-y-4 transition-colors">
+            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">إضافة فصل جديد</h3>
+            <input type="text" id="class-name-input" placeholder="اسم الفصل" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-gray-400 dark:placeholder-gray-500">
+            <div class="flex gap-2">
+                <button onclick="closeClassModal()" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-xl text-sm font-semibold">إلغاء</button>
+                <button onclick="saveClass()" class="flex-1 bg-indigo-600 dark:bg-indigo-700 text-white py-3 rounded-xl text-sm font-semibold">حفظ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة الطالب -->
+    <div id="modal-student" class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" style="display: none;">
+        <div class="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-4 transition-colors">
+            <h3 id="student-modal-title" class="font-bold text-lg text-gray-800 dark:text-gray-100">إضافة طالب جديد</h3>
+            <input type="hidden" id="student-edit-id">
+            
+            <div>
+                <label class="text-xs text-gray-600 dark:text-gray-400 mb-1 block">اسم الطالب</label>
+                <input type="text" id="student-name-input" placeholder="الاسم الثلاثي" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-gray-400 dark:placeholder-gray-500">
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-600 dark:text-gray-400 mb-1 block">رقم جوال ولي الأمر</label>
+                <input type="tel" id="student-phone-input" placeholder="966500000000" inputmode="tel" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-gray-400 dark:placeholder-gray-500">
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-600 dark:text-gray-400 mb-1 block">صورة الطالب (اختياري)</label>
+                <input type="file" id="student-img-file" accept="image/*" class="w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-900 file:text-indigo-700 dark:file:text-indigo-200">
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeStudentModal()" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-xl text-sm font-semibold">إلغاء</button>
+                <button onclick="saveStudent()" class="flex-1 bg-indigo-600 dark:bg-indigo-700 text-white py-3 rounded-xl text-sm font-semibold">حفظ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 🌙 إدارة الوضع الليلي / النهاري
+        // ==========================================
+        function applyTheme(theme) {
+            const html = document.documentElement;
+            const metaTheme = document.querySelector('meta[name="theme-color"]');
+            if (theme === 'dark') {
+                html.classList.add('dark');
+                if (metaTheme) metaTheme.setAttribute('content', '#1f2937');
+            } else {
+                html.classList.remove('dark');
+                if (metaTheme) metaTheme.setAttribute('content', '#4f46e5');
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark');
+            const newTheme = isDark ? 'light' : 'dark';
+            applyTheme(newTheme);
+            localStorage.setItem('app_theme', newTheme);
+        }
+
+        // عند تحميل الصفحة: نطبق الاختيار المحفوظ، أو نتبع تفضيل النظام
+        (function initTheme() {
+            const saved = localStorage.getItem('app_theme');
+            if (saved) {
+                applyTheme(saved);
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                applyTheme('dark');
+            } else {
+                applyTheme('light');
+            }
+        })();
+
+        // ===== تسجيل ServiceWorker (فقط على http/https) =====
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(() => {});
+            });
+        }
+
+        // ===== قاعدة البيانات (Firestore فقط، بدون localStorage) =====
+        let classes = [];
+        let students = [];
+
+        // اشتراك لحظي: أي تغيير في Firestore ينعكس تلقائياً على الواجهة
+        function initDatabase() {
+            DB.subscribeClasses(updated => {
+                classes = updated;
+                if (currentView === 'view-classes') renderClasses();
+            }, () => alert('تعذّر الاتصال بقاعدة البيانات (الفصول). تحقّق من الاتصال بالإنترنت وإعدادات Firebase.'));
+
+            DB.subscribeStudents(updated => {
+                students = updated;
+                if (currentView === 'view-classes') renderClasses();
+                if (currentView === 'view-students') renderStudents();
+            }, () => alert('تعذّر الاتصال بقاعدة البيانات (الطلاب). تحقّق من الاتصال بالإنترنت وإعدادات Firebase.'));
+        }
+
+        const criteriaList = [
+            { key: 'concentration', label: 'التركيز' },
+            { key: 'skills', label: 'المهارات' },
+            { key: 'response', label: 'الاستجابة' },
+            { key: 'abilities', label: 'القدرات' }
+        ];
+
+        const levels = ['ممتاز', 'جيد جداً', 'جيد', 'مقبول', 'ضعيف'];
+        let currentView = 'view-classes';
+        let activeClassId = null;
+        let activeStudentId = null;
+
+        function avatarUrl(name) {
+            return `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(name)}&size=128`;
+        }
+
+        function showView(viewId) {
+            currentView = viewId;
+            ['view-classes', 'view-students', 'view-eval'].forEach(v => {
+                document.getElementById(v).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+
+            const navBack = document.getElementById('nav-back');
+            if (viewId === 'view-classes') navBack.classList.add('hidden');
+            else navBack.classList.remove('hidden');
+            window.scrollTo(0, 0);
+        }
+
+        function goBack() {
+            if (currentView === 'view-eval') openClass(activeClassId);
+            else if (currentView === 'view-students') {
+                showView('view-classes');
+                renderClasses();
+            }
+        }
+
+        function renderClasses() {
+            const container = document.getElementById('classes-list');
+            container.innerHTML = '';
+            classes.forEach(cls => {
+                const count = students.filter(s => s.classId === cls.id).length;
+                container.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex justify-between items-center transition-colors">
+                        <div class="flex items-center gap-3 cursor-pointer flex-1 active:bg-gray-50 dark:active:bg-gray-700 p-1 rounded-xl transition" onclick="openClass('${cls.id}')">
+                            <div class="w-10 h-10 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-xl flex items-center justify-center">
+                                <i class="fa-solid fa-school"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-gray-800 dark:text-gray-100">${cls.name}</h3>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">${count} طلاب مسجلين</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button onclick="event.stopPropagation(); deleteClass('${cls.id}')" class="p-2.5 text-gray-400 dark:text-gray-500 active:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                            <i class="fa-solid fa-chevron-left text-gray-400 dark:text-gray-500 px-1"></i>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function deleteClass(classId) {
+            const count = students.filter(s => s.classId === classId).length;
+            const msg = count > 0
+                ? `سيتم حذف هذا الفصل مع ${count} طالب/طالبة وكل تقييماتهم. هل أنت متأكد؟`
+                : 'هل أنت متأكد من حذف هذا الفصل؟';
+            if (!confirm(msg)) return;
+            try {
+                await DB.deleteClass(classId);
+            } catch (e) {
+                console.error(e);
+                alert('تعذّر حذف الفصل. تحقّق من الاتصال بالإنترنت.');
+            }
+        }
+
+        function openClass(classId) {
+            activeClassId = classId;
+            const cls = classes.find(c => c.id === classId);
+            document.getElementById('current-class-title').innerText = cls.name;
+            renderStudents();
+            showView('view-students');
+        }
+
+        function renderStudents() {
+            const container = document.getElementById('students-list');
+            container.innerHTML = '';
+            const classStudents = students.filter(s => s.classId === activeClassId);
+
+            if (classStudents.length === 0) {
+                container.innerHTML = `<div class="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">لا توجد طالبات/طلاب مسجلين في هذا الفصل حتى الآن</div>`;
+                return;
+            }
+
+            classStudents.forEach(st => {
+                const imgSrc = st.image || avatarUrl(st.name);
+                container.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between transition-colors">
+                        <div class="flex items-center gap-3 cursor-pointer flex-1 active:bg-gray-50 dark:active:bg-gray-700 p-1 rounded-xl transition" onclick="openEval('${st.id}')">
+                            <img src="${imgSrc}" class="w-12 h-12 rounded-full object-cover bg-gray-100 dark:bg-gray-700 border dark:border-gray-600">
+                            <div>
+                                <h3 class="font-bold text-gray-800 dark:text-gray-100 text-sm">${st.name}</h3>
+                                <p class="text-[10px] text-gray-400 dark:text-gray-500">ولي الأمر: ${st.phone || 'غير مسجل'}</p>
+                                <p class="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">اضغط للتقييم</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button onclick="editStudent('${st.id}')" class="p-2.5 text-gray-400 dark:text-gray-500 active:text-indigo-600 dark:active:text-indigo-400"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteStudent('${st.id}')" class="p-2.5 text-gray-400 dark:text-gray-500 active:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // ===== الفصول =====
+        function openAddClassModal() {
+            document.getElementById('class-name-input').value = '';
+            document.getElementById('modal-class').style.display = 'flex';
+        }
+        function closeClassModal() {
+            document.getElementById('modal-class').style.display = 'none';
+        }
+        async function saveClass() {
+            const name = document.getElementById('class-name-input').value.trim();
+            if (!name) return alert('الرجاء إدخال اسم الفصل');
+            closeClassModal();
+            try {
+                await DB.addClass({ name });
+            } catch (e) {
+                console.error(e);
+                alert('تعذّر إضافة الفصل. تحقّق من الاتصال بالإنترنت.');
+            }
+        }
+
+        // ===== الطلاب =====
+        function openStudentModal(id = null, name = '', phone = '') {
+            document.getElementById('student-edit-id').value = id || '';
+            document.getElementById('student-name-input').value = name;
+            document.getElementById('student-phone-input').value = phone;
+            document.getElementById('student-img-file').value = '';
+            document.getElementById('student-modal-title').innerText = id ? 'تعديل بيانات الطالب' : 'إضافة طالب جديد';
+            document.getElementById('modal-student').style.display = 'flex';
+        }
+        function closeStudentModal() {
+            document.getElementById('modal-student').style.display = 'none';
+        }
+
+        async function saveStudent() {
+            const id = document.getElementById('student-edit-id').value;
+            const name = document.getElementById('student-name-input').value.trim();
+            const phone = document.getElementById('student-phone-input').value.trim();
+            const fileInput = document.getElementById('student-img-file');
+
+            if (!name) return alert('الرجاء إدخال اسم الطالب');
+
+            const proceedSave = async (imgData = null) => {
+                closeStudentModal();
+                try {
+                    if (id) {
+                        const st = students.find(s => s.id === id);
+                        const data = { name, phone };
+                        if (imgData) data.image = imgData;
+                        await DB.updateStudent(id, data);
+                    } else {
+                        await DB.addStudent({
+                            classId: activeClassId,
+                            name, phone,
+                            image: imgData || null
+                        });
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('تعذّر حفظ بيانات الطالب. تحقّق من الاتصال بالإنترنت.');
+                }
+            };
+
+            if (fileInput.files && fileInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => proceedSave(e.target.result);
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                proceedSave(null);
+            }
+        }
+
+        function editStudent(id) {
+            const st = students.find(s => s.id === id);
+            if (st) openStudentModal(st.id, st.name, st.phone || '');
+        }
+
+        async function deleteStudent(id) {
+            if (confirm('هل أنت متأكد من حذف هذا الطالب؟')) {
+                try {
+                    await DB.deleteStudent(id);
+                } catch (e) {
+                    console.error(e);
+                    alert('تعذّر حذف الطالب. تحقّق من الاتصال بالإنترنت.');
+                }
+            }
+        }
+
+        // ===== التقييم =====
+        let activeEvaluation = {};
+
+        async function openEval(studentId) {
+            activeStudentId = studentId;
+            const st = students.find(s => s.id === studentId);
+            const img = st.image || avatarUrl(st.name);
+
+            document.getElementById('eval-student-name').innerText = st.name;
+            document.getElementById('eval-student-img').src = img;
+
+            let stEval = {};
+            try {
+                stEval = await DB.getEvaluation(studentId);
+            } catch (e) {
+                console.error(e);
+                alert('تعذّر تحميل التقييم. تحقّق من الاتصال بالإنترنت.');
+            }
+            activeEvaluation = stEval;
+            const container = document.getElementById('eval-criteria-list');
+            container.innerHTML = '';
+
+            criteriaList.forEach(crit => {
+                const currentVal = stEval[crit.key] || 'ممتاز';
+                let levelsHtml = '';
+                levels.forEach(lvl => {
+                    const isSelected = currentVal === lvl
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+                    levelsHtml += `
+                        <button type="button" onclick="selectLevel('${crit.key}', '${lvl}', this)"
+                            class="flex-1 py-2.5 text-[11px] font-bold rounded-lg transition ${isSelected}" data-level="${lvl}">
+                            ${lvl}
+                        </button>
+                    `;
+                });
+
+                container.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-3.5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-2 transition-colors">
+                        <span class="font-bold text-sm text-gray-700 dark:text-gray-200 block">${crit.label}</span>
+                        <div class="flex gap-1" data-criterion="${crit.key}">
+                            ${levelsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            showView('view-eval');
+        }
+
+        function selectLevel(criterionKey, level, btnElement) {
+            const parent = btnElement.parentElement;
+            parent.querySelectorAll('button').forEach(b => {
+                b.className = 'flex-1 py-2.5 text-[11px] font-bold rounded-lg transition bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+            });
+            btnElement.className = 'flex-1 py-2.5 text-[11px] font-bold rounded-lg transition bg-indigo-600 text-white shadow';
+        }
+
+        async function saveEvaluation() {
+            if (!activeStudentId) return;
+            const evalData = {};
+            criteriaList.forEach(crit => {
+                const activeBtn = document.querySelector(`[data-criterion="${crit.key}"] .bg-indigo-600`);
+                if (activeBtn) {
+                    evalData[crit.key] = activeBtn.getAttribute('data-level');
+                }
+            });
+            activeEvaluation = evalData;
+            try {
+                await DB.saveEvaluation(activeStudentId, evalData);
+            } catch (e) {
+                console.error(e);
+                alert('تعذّر حفظ التقييم. تحقّق من الاتصال بالإنترنت.');
+            }
+        }
+
+        // ===== نافذة PDF =====
+        function openPDFModal() {
+            saveEvaluation();
+            const st = students.find(s => s.id === activeStudentId);
+            if (!st) return alert('لم يتم العثور على بيانات الطالب!');
+            const cls = classes.find(c => c.id === st.classId);
+
+            const img = st.image || avatarUrl(st.name);
+            document.getElementById('pdf-student-img').src = img;
+            document.getElementById('pdf-student-name').innerText = `اسم الطالب: ${st.name}`;
+            document.getElementById('pdf-class-name').innerText = `الفصل: ${cls ? cls.name : ''}`;
+
+            const today = new Date().toLocaleDateString('ar-SA');
+            document.getElementById('pdf-date').innerText = `التاريخ: ${today}`;
+
+            const tableBody = document.getElementById('pdf-table-body');
+            tableBody.innerHTML = '';
+            const stEval = activeEvaluation || {};
+
+            criteriaList.forEach(crit => {
+                const val = stEval[crit.key] || 'ممتاز';
+                tableBody.innerHTML += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${crit.label}</td>
+                        <td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-size: 12px; font-weight: bold; color: #4f46e5;">${val}</td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('pdf-modal').style.display = 'flex';
+        }
+
+        function closePDFModal() {
+            document.getElementById('pdf-modal').style.display = 'none';
+        }
+
+        function getPdfOptions(filename) {
+            return {
+                margin: 5,
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: false,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+        }
+
+        async function generatePDFBlob() {
+            const element = document.getElementById('pdf-container');
+            const st = students.find(s => s.id === activeStudentId);
+            const filename = `تقرير_تقييم_${st.name}.pdf`;
+            const opt = getPdfOptions(filename);
+            const blob = await html2pdf().from(element).set(opt).output('blob');
+            return { blob, filename };
+        }
+
+        async function downloadPDFReport() {
+            if (!activeStudentId) return alert('لم يتم تحديد طالب!');
+            const st = students.find(s => s.id === activeStudentId);
+            if (!st) return alert('بيانات الطالب غير موجودة!');
+
+            try {
+                const { blob, filename } = await generatePDFBlob();
+                const url = URL.createObjectURL(blob);
+
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+                if (isIOS) {
+                    const newWin = window.open(url, '_blank');
+                    if (!newWin) {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.target = '_blank';
+                        a.rel = 'noopener';
+                        a.click();
+                    }
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                } else {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(url), 10000);
+                }
+            } catch (err) {
+                console.error('PDF error:', err);
+                alert('تعذّر إنشاء التقرير. تأكد من وجود اتصال بالإنترنت لتحميل الصورة.\nالتفاصيل: ' + err.message);
+            }
+        }
+
+        async function sharePDFReport() {
+            if (!activeStudentId) return alert('لم يتم تحديد طالب!');
+            const st = students.find(s => s.id === activeStudentId);
+            if (!st) return alert('بيانات الطالب غير موجودة!');
+
+            const shareText = `السلام عليكم ورحمة الله وبركاته، ولي الأمر الفاضل: ${st.name}\nنرفق لكم تقرير الأداء التعليمي المعتمد.\nمعلمة الفصل: روايح`;
+
+            try {
+                const { blob, filename } = await generatePDFBlob();
+                const pdfFile = new File([blob], filename, { type: 'application/pdf' });
+
+                if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                    try {
+                        await navigator.share({
+                            title: `تقرير تقييم ${st.name}`,
+                            text: shareText,
+                            files: [pdfFile]
+                        });
+                        return;
+                    } catch (shareErr) {
+                        if (shareErr.name === 'AbortError') return;
+                        console.warn('Share with file failed', shareErr);
+                    }
+                }
+
+                if (navigator.share) {
+                    try {
+                        await navigator.share({
+                            title: `تقرير تقييم ${st.name}`,
+                            text: shareText
+                        });
+                        return;
+                    } catch (shareErr) {
+                        if (shareErr.name === 'AbortError') return;
+                    }
+                }
+
+                const url = URL.createObjectURL(blob);
+                const newWin = window.open(url, '_blank');
+                if (!newWin) {
+                    alert('متصفحك لا يدعم المشاركة المباشرة.\nتم إنشاء التقرير، اضغط على "حفظ PDF" لحفظه.');
+                }
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+            } catch (err) {
+                console.error('Share error:', err);
+                alert('تعذّر إنشاء التقرير للمشاركة.\nالتفاصيل: ' + err.message);
+            }
+        }
+
+        initDatabase();
+    </script>
+</body>
+</html>

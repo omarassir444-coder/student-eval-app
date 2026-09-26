@@ -1,0 +1,20 @@
+{
+  "name": "تقييم الطلاب",
+  "packageId": "com.rwaih.studenteval",
+  "version": "1.0.0",
+  "entry": "teacher_eval.html",
+  "orientation": "portrait",
+  "statusBar": true,
+  "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"],
+  "icon": "./icon.png",
+  "network": {
+    "cleartext": false
+  },
+  "webview": {
+    "backButton": "history",
+    "clearCacheOnStart": false
+  },
+  "splashScreen": {
+    "backgroundColor": "#4f46e5"
+  }
+}
