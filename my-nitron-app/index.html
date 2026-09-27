@@ -75,6 +75,7 @@
                     <i class="fa-solid fa-plus"></i> فصل جديد
                 </button>
             </div>
+            <p id="db-status" role="status" class="text-xs text-gray-500 dark:text-gray-400">جاري الاتصال بقاعدة البيانات...</p>
             <div id="classes-list" class="space-y-3"></div>
         </div>
 
@@ -251,15 +252,11 @@
             const isDark = html.classList.contains('dark');
             const newTheme = isDark ? 'light' : 'dark';
             applyTheme(newTheme);
-            localStorage.setItem('app_theme', newTheme);
         }
 
-        // عند تحميل الصفحة: نطبق الاختيار المحفوظ، أو نتبع تفضيل النظام
+        // اتبع تفضيل النظام دون حفظ بيانات محلية.
         (function initTheme() {
-            const saved = localStorage.getItem('app_theme');
-            if (saved) {
-                applyTheme(saved);
-            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
                 applyTheme('dark');
             } else {
                 applyTheme('light');
@@ -269,19 +266,40 @@
         // ===== قاعدة البيانات (Firestore فقط، بدون localStorage) =====
         let classes = [];
         let students = [];
+        let classesLoaded = false;
+        let studentsLoaded = false;
+        let databaseError = false;
+
+        function updateDatabaseStatus(error = false) {
+            const status = document.getElementById('db-status');
+            if (!status) return;
+            if (error) databaseError = true;
+            if (classesLoaded && studentsLoaded) databaseError = false;
+            status.innerText = databaseError
+                ? 'تعذّر الاتصال بقاعدة البيانات. تحقق من الإنترنت وقواعد Firestore.'
+                : classesLoaded && studentsLoaded
+                    ? 'متصل بقاعدة البيانات'
+                    : 'جاري الاتصال بقاعدة البيانات...';
+            status.classList.toggle('text-red-600', databaseError);
+            status.classList.toggle('dark:text-red-400', databaseError);
+        }
 
         // اشتراك لحظي: أي تغيير في Firestore ينعكس تلقائياً على الواجهة
         function initDatabase() {
             DB.subscribeClasses(updated => {
                 classes = updated;
+                classesLoaded = true;
+                updateDatabaseStatus();
                 if (currentView === 'view-classes') renderClasses();
-            }, () => alert('تعذّر الاتصال بقاعدة البيانات (الفصول). تحقّق من الاتصال بالإنترنت وإعدادات Firebase.'));
+            }, () => updateDatabaseStatus(true));
 
             DB.subscribeStudents(updated => {
                 students = updated;
+                studentsLoaded = true;
+                updateDatabaseStatus();
                 if (currentView === 'view-classes') renderClasses();
                 if (currentView === 'view-students') renderStudents();
-            }, () => alert('تعذّر الاتصال بقاعدة البيانات (الطلاب). تحقّق من الاتصال بالإنترنت وإعدادات Firebase.'));
+            }, () => updateDatabaseStatus(true));
         }
 
         const criteriaList = [
@@ -324,6 +342,10 @@
         function renderClasses() {
             const container = document.getElementById('classes-list');
             container.innerHTML = '';
+            if (classesLoaded && classes.length === 0) {
+                container.innerHTML = '<div class="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">لا توجد فصول مسجلة في قاعدة البيانات حتى الآن</div>';
+                return;
+            }
             classes.forEach(cls => {
                 const count = students.filter(s => s.classId === cls.id).length;
                 container.innerHTML += `
@@ -509,7 +531,7 @@
             container.innerHTML = '';
 
             criteriaList.forEach(crit => {
-                const currentVal = stEval[crit.key] || 'ممتاز';
+                const currentVal = stEval[crit.key];
                 let levelsHtml = '';
                 levels.forEach(lvl => {
                     const isSelected = currentVal === lvl
@@ -545,7 +567,7 @@
         }
 
         async function saveEvaluation() {
-            if (!activeStudentId) return;
+            if (!activeStudentId) return false;
             const evalData = {};
             criteriaList.forEach(crit => {
                 const activeBtn = document.querySelector(`[data-criterion="${crit.key}"] .bg-indigo-600`);
@@ -553,18 +575,24 @@
                     evalData[crit.key] = activeBtn.getAttribute('data-level');
                 }
             });
+            if (criteriaList.some(crit => !evalData[crit.key])) {
+                alert('يرجى اختيار مستوى لكل مجال قبل الحفظ.');
+                return false;
+            }
             activeEvaluation = evalData;
             try {
                 await DB.saveEvaluation(activeStudentId, evalData);
+                return true;
             } catch (e) {
                 console.error(e);
                 alert('تعذّر حفظ التقييم. تحقّق من الاتصال بالإنترنت.');
+                return false;
             }
         }
 
         // ===== نافذة PDF =====
-        function openPDFModal() {
-            saveEvaluation();
+        async function openPDFModal() {
+            if (!await saveEvaluation()) return;
             const st = students.find(s => s.id === activeStudentId);
             if (!st) return alert('لم يتم العثور على بيانات الطالب!');
             const cls = classes.find(c => c.id === st.classId);
@@ -582,7 +610,7 @@
             const stEval = activeEvaluation || {};
 
             criteriaList.forEach(crit => {
-                const val = stEval[crit.key] || 'ممتاز';
+                const val = stEval[crit.key] || 'غير مقيم';
                 tableBody.innerHTML += `
                     <tr>
                         <td style="padding: 8px; border: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${crit.label}</td>
