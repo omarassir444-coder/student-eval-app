@@ -47,9 +47,12 @@
     <!-- Header -->
     <header class="bg-indigo-600 dark:bg-indigo-800 text-white p-4 shadow-md sticky top-0 z-40 transition-colors">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-lg font-bold flex items-center gap-2">
-                <i class="fa-solid fa-graduation-cap"></i> تقييم الطلاب
-            </h1>
+            <div>
+                <h1 class="text-lg font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap"></i> تقييم الطلاب
+                </h1>
+                <p class="text-[10px] text-indigo-100">الإصدار 1.0.2</p>
+            </div>
             <div class="flex items-center gap-2">
                 <div id="nav-back" class="hidden">
                     <button onclick="goBack()" class="bg-indigo-700 dark:bg-indigo-900 px-3.5 py-1.5 rounded-lg text-sm font-semibold active:bg-indigo-800 transition flex items-center gap-1.5">
@@ -269,6 +272,7 @@
         let classesLoaded = false;
         let studentsLoaded = false;
         let databaseError = false;
+        const appVersion = '1.0.2';
 
         function updateDatabaseStatus(error = false) {
             const status = document.getElementById('db-status');
@@ -276,10 +280,10 @@
             if (error) databaseError = true;
             if (classesLoaded && studentsLoaded) databaseError = false;
             status.innerText = databaseError
-                ? 'تعذّر الاتصال بقاعدة البيانات. تحقق من الإنترنت وقواعد Firestore.'
+                ? `تعذّر الاتصال بقاعدة البيانات. تحقق من الإنترنت وقواعد Firestore. (الإصدار ${appVersion})`
                 : classesLoaded && studentsLoaded
-                    ? 'متصل بقاعدة البيانات'
-                    : 'جاري الاتصال بقاعدة البيانات...';
+                    ? `متصل بقاعدة البيانات - الإصدار ${appVersion} - الفصول ${classes.length} - الطلاب ${students.length}`
+                    : `جاري الاتصال بقاعدة البيانات... (الإصدار ${appVersion})`;
             status.classList.toggle('text-red-600', databaseError);
             status.classList.toggle('dark:text-red-400', databaseError);
         }

@@ -1,7 +1,7 @@
 {
   "name": "تقييم الطلاب",
   "packageId": "com.rwaih.studenteval",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "entry": "index.html",
   "orientation": "portrait",
   "statusBar": true,
