@@ -1,6 +1,6 @@
 {
-  "name": "My Nitron App",
-  "packageId": "com.example.app",
+  "name": "تقييم الطلاب",
+  "packageId": "com.rwaih.studenteval",
   "version": "1.0.0",
   "entry": "index.html",
   "orientation": "portrait",
